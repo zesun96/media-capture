@@ -1,0 +1,16 @@
+.cache/
+CMakeFiles/
+CMakeCache.txt
+.DS_Store
+Makefile
+cmake_install.cmake
+out
+.vs/
+.vscode/
+deps/libwebrtc
+/deps/dr_libs/
+/deps/nlohmann_json/
+/deps/plog/
+/protocol/
+
+/docs/ROADMAP.md
