@@ -4,6 +4,9 @@ set(MEDIA_CAPTURE_MINIAUDIO_ROOT "" CACHE PATH "Path to a local miniaudio source
 set(MEDIA_CAPTURE_SCREEN_CAPTURE_LITE_ROOT "" CACHE PATH
   "Path to a local screen_capture_lite source tree"
 )
+set(MEDIA_CAPTURE_CAMERA_CAPTURE_ROOT "" CACHE PATH
+  "Path to a local CameraCapture source tree"
+)
 
 if(MEDIA_CAPTURE_MINIAUDIO_ROOT)
   get_filename_component(MEDIA_CAPTURE_MINIAUDIO_SOURCE_DIR
@@ -23,6 +26,31 @@ else()
   )
   FetchContent_MakeAvailable(miniaudio_source)
   set(MEDIA_CAPTURE_MINIAUDIO_SOURCE_DIR "${miniaudio_source_SOURCE_DIR}")
+endif()
+
+if(MEDIA_CAPTURE_BUILD_CAMERA)
+  if(MEDIA_CAPTURE_CAMERA_CAPTURE_ROOT)
+    get_filename_component(MEDIA_CAPTURE_CAMERA_CAPTURE_SOURCE_DIR
+      "${MEDIA_CAPTURE_CAMERA_CAPTURE_ROOT}" ABSOLUTE
+    )
+    if(NOT EXISTS "${MEDIA_CAPTURE_CAMERA_CAPTURE_SOURCE_DIR}/include/ccap.h" OR
+       NOT EXISTS "${MEDIA_CAPTURE_CAMERA_CAPTURE_SOURCE_DIR}/CMakeLists.txt")
+      message(FATAL_ERROR
+        "MEDIA_CAPTURE_CAMERA_CAPTURE_ROOT must contain CameraCapture sources"
+      )
+    endif()
+  else()
+    FetchContent_Declare(camera_capture_source
+      GIT_REPOSITORY https://github.com/wysaid/CameraCapture.git
+      GIT_TAG v1.7.4
+      GIT_SHALLOW TRUE
+      SOURCE_SUBDIR __media_capture_dependency_only
+    )
+    FetchContent_MakeAvailable(camera_capture_source)
+    set(MEDIA_CAPTURE_CAMERA_CAPTURE_SOURCE_DIR
+      "${camera_capture_source_SOURCE_DIR}"
+    )
+  endif()
 endif()
 
 if(MEDIA_CAPTURE_BUILD_SCREEN)

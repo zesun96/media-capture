@@ -1,5 +1,14 @@
 # Third-party notices
 
+## CameraCapture 1.7.4
+
+MIT License
+
+Copyright (c) 2025 Wang Yang
+
+The source distribution and complete license text are available from
+<https://github.com/wysaid/CameraCapture>.
+
 ## miniaudio 0.11.25
 
 Copyright 2025 David Reid.

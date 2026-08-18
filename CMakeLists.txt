@@ -8,6 +8,7 @@ include(CTest)
 
 option(MEDIA_CAPTURE_BUILD_EXAMPLES "Build media-capture examples" ON)
 option(MEDIA_CAPTURE_BUILD_TESTS "Build media-capture tests" ON)
+option(MEDIA_CAPTURE_BUILD_CAMERA "Build camera device capture" ON)
 if(WIN32)
   set(MEDIA_CAPTURE_BUILD_SCREEN_DEFAULT ON)
 else()
@@ -18,6 +19,25 @@ option(MEDIA_CAPTURE_BUILD_SCREEN "Build screen and window source enumeration"
 )
 
 include(cmake/Dependencies.cmake)
+
+if(MEDIA_CAPTURE_BUILD_CAMERA)
+  set(CCAP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(CCAP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(CCAP_BUILD_CLI OFF CACHE BOOL "" FORCE)
+  set(CCAP_INSTALL OFF CACHE BOOL "" FORCE)
+  set(CCAP_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  set(CCAP_ENABLE_FILE_PLAYBACK OFF CACHE BOOL "" FORCE)
+  set(CCAP_ENABLE_VIDEO_WRITER OFF CACHE BOOL "" FORCE)
+  set(CCAP_NO_LOG ON CACHE BOOL "Disable CameraCapture logging")
+  set(MEDIA_CAPTURE_SAVED_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
+  add_subdirectory("${MEDIA_CAPTURE_CAMERA_CAPTURE_SOURCE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/camera-capture-build" EXCLUDE_FROM_ALL)
+  if(MEDIA_CAPTURE_SAVED_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD "${MEDIA_CAPTURE_SAVED_CXX_STANDARD}")
+  else()
+    unset(CMAKE_CXX_STANDARD)
+  endif()
+endif()
 
 add_library(media_capture_miniaudio OBJECT "${MEDIA_CAPTURE_MINIAUDIO_SOURCE_DIR}/miniaudio.c")
 target_include_directories(media_capture_miniaudio
@@ -44,6 +64,25 @@ set_target_properties(media_capture_audio PROPERTIES
   EXPORT_NAME audio
   POSITION_INDEPENDENT_CODE ON
 )
+
+if(MEDIA_CAPTURE_BUILD_CAMERA)
+  add_library(media_capture_camera STATIC
+    src/camera/camera_capture.cpp
+    src/camera/camera_device.cpp
+  )
+  add_library(media_capture::camera ALIAS media_capture_camera)
+  target_compile_features(media_capture_camera PUBLIC cxx_std_20)
+  target_include_directories(media_capture_camera
+    PUBLIC
+      "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+      "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+  )
+  target_link_libraries(media_capture_camera PRIVATE ccap)
+  set_target_properties(media_capture_camera PROPERTIES
+    EXPORT_NAME camera
+    POSITION_INDEPENDENT_CODE ON
+  )
+endif()
 
 if(MEDIA_CAPTURE_BUILD_SCREEN)
   set(MEDIA_CAPTURE_SCREEN_SOURCES
@@ -128,6 +167,15 @@ install(TARGETS media_capture_audio
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+if(TARGET media_capture_camera)
+  install(TARGETS media_capture_camera ccap
+    EXPORT media-capture-targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+endif()
 if(TARGET media_capture_screen)
   install(TARGETS media_capture_screen
     EXPORT media-capture-targets
