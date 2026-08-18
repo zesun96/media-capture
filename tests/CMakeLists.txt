@@ -1,0 +1,3 @@
+add_executable(media_capture_audio_api_test audio_capture_api_test.cpp)
+target_link_libraries(media_capture_audio_api_test PRIVATE media_capture::audio)
+add_test(NAME media_capture.audio_api COMMAND media_capture_audio_api_test)
