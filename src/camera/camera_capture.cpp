@@ -98,6 +98,8 @@ public:
 		return last_error_;
 	}
 
+	bool Ready() const noexcept { return ready_; }
+
 private:
 	bool Configure(ccap::Provider& provider, std::string_view requested_id,
 	               std::string& resolved_id) {
@@ -155,7 +157,7 @@ std::unique_ptr<CameraCapture> CreateCameraCapture(CameraCaptureConfig config,
 		return nullptr;
 	}
 	auto capture = std::make_unique<CameraCaptureCcap>(std::move(config), std::move(callback));
-	if (!capture->Start()) {
+	if (!capture->Ready()) {
 		return nullptr;
 	}
 	return capture;

@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
 			    std::cout << frame.width << 'x' << frame.height << " BGRA frame\n";
 		    }
 	    });
-	if (!capture) {
+	if (!capture || !capture->Start()) {
 		std::cerr << "Failed to start camera capture\n";
 		return 1;
 	}
