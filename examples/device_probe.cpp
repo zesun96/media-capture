@@ -228,7 +228,7 @@ int main(int argc, char* argv[]) {
 		} else if (argc > 2) {
 			source_id = argv[2];
 		}
-		if (argc == 4) {
+		if (argc >= 4) {
 			duration_seconds = std::stoi(argv[3]);
 		}
 		if (argc > 4) {

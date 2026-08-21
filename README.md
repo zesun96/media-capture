@@ -81,3 +81,10 @@ for the window scenarios and removes its temporary output files afterward. Run h
 from an interactive process with microphone, camera, and desktop access; service accounts and
 sandboxed automation processes can enumerate Windows devices yet still be denied when activating
 them.
+
+Run the release soak with microphone, camera, and screen capture active concurrently for ten
+minutes. Per-device metrics and errors are written below the selected output directory:
+
+```powershell
+.\tests\run_device_soak.ps1 -DurationSeconds 600
+```
