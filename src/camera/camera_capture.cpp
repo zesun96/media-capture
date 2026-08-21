@@ -5,12 +5,17 @@
 
 #include "media_capture/camera_capture.h"
 
+#include "media_capture/camera_device.h"
+
 #include "ccap.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <limits>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 namespace media_capture {
@@ -20,6 +25,12 @@ std::int64_t SteadyTimestampMicros() {
 	return std::chrono::duration_cast<std::chrono::microseconds>(
 	           std::chrono::steady_clock::now().time_since_epoch())
 	    .count();
+}
+
+bool IsCameraAvailable(std::string_view device_id) {
+	const auto devices = EnumerateCameraDevices();
+	return std::any_of(devices.begin(), devices.end(),
+	                   [device_id](const auto& device) { return device.id == device_id; });
 }
 
 class CameraCaptureCcap final : public CameraCapture {
@@ -37,23 +48,41 @@ public:
 	}
 
 	bool Start() override {
-		std::lock_guard<std::mutex> guard(mutex_);
-		if (!ready_) {
+		{
+			std::lock_guard<std::mutex> guard(mutex_);
+			if (!ready_) {
+				return false;
+			}
+			if (running_requested_.load()) {
+				return true;
+			}
+			next_frame_due_us_.store(0);
+			last_frame_us_.store(SteadyTimestampMicros());
+			if (!provider_.start()) {
+				SetError("failed to start camera capture");
+				return false;
+			}
+			running_requested_.store(true);
+			SetError({});
+		}
+		try {
+			supervisor_ = std::thread([this] { Supervise(); });
+		} catch (...) {
+			running_requested_.store(false);
+			std::lock_guard<std::mutex> guard(mutex_);
+			provider_.stop();
+			SetError("failed to start camera capture supervisor");
 			return false;
 		}
-		if (provider_.isStarted()) {
-			return true;
-		}
-		next_frame_due_us_.store(0);
-		if (!provider_.start()) {
-			SetError("failed to start camera capture");
-			return false;
-		}
-		SetError({});
 		return true;
 	}
 
 	void Stop() noexcept override {
+		running_requested_.store(false);
+		supervisor_condition_.notify_all();
+		if (supervisor_.joinable()) {
+			supervisor_.join();
+		}
 		try {
 			std::lock_guard<std::mutex> guard(mutex_);
 			provider_.stop();
@@ -89,9 +118,10 @@ public:
 		if (!Configure(replacement, device_id, resolved_id)) {
 			return false;
 		}
-		const bool was_running = provider_.isStarted();
+		const bool should_run = running_requested_.load();
 		next_frame_due_us_.store(0);
-		if (was_running && !replacement.start()) {
+		last_frame_us_.store(SteadyTimestampMicros());
+		if (should_run && !replacement.start()) {
 			SetError("failed to start replacement camera device");
 			return false;
 		}
@@ -133,6 +163,7 @@ private:
 				SetError("camera backend returned an unsupported frame");
 				return true;
 			}
+			last_frame_us_.store(SteadyTimestampMicros());
 			if (!ShouldDeliverFrame()) {
 				return true;
 			}
@@ -141,6 +172,10 @@ private:
 				           static_cast<std::int64_t>(frame->timestamp / 1000U)});
 			} catch (...) {
 				SetError("camera frame callback threw an exception");
+				return true;
+			}
+			if (recovery_pending_.exchange(false)) {
+				SetError({});
 			}
 			return true;
 		});
@@ -151,6 +186,71 @@ private:
 		const auto info = provider.getDeviceInfo();
 		resolved_id = info.has_value() ? info->deviceName : std::string(requested_id);
 		return true;
+	}
+
+	void Supervise() noexcept {
+		constexpr auto check_interval = std::chrono::milliseconds(500);
+		constexpr auto stall_timeout = std::chrono::seconds(3);
+		while (running_requested_.load()) {
+			std::unique_lock<std::mutex> wait_guard(supervisor_mutex_);
+			supervisor_condition_.wait_for(wait_guard, check_interval,
+			                               [this] { return !running_requested_.load(); });
+			wait_guard.unlock();
+			if (!running_requested_.load()) {
+				break;
+			}
+
+			std::string device_id;
+			bool backend_started = false;
+			{
+				std::lock_guard<std::mutex> guard(mutex_);
+				device_id = device_id_;
+				backend_started = ready_ && provider_.isStarted();
+			}
+			const auto elapsed_without_frame =
+			    std::chrono::microseconds(SteadyTimestampMicros() - last_frame_us_.load());
+			if (backend_started && elapsed_without_frame < stall_timeout) {
+				continue;
+			}
+
+			bool available = false;
+			try {
+				available = IsCameraAvailable(device_id);
+			} catch (...) {
+				SetError("failed to enumerate camera devices during recovery");
+				continue;
+			}
+			if (!available) {
+				SetError("camera device is unavailable; waiting for it to return");
+				continue;
+			}
+
+			SetError("camera capture stalled; restarting device");
+			std::lock_guard<std::mutex> guard(mutex_);
+			if (!running_requested_.load()) {
+				break;
+			}
+			provider_.stop();
+			provider_.setNewFrameCallback({});
+			provider_.close();
+			ready_ = false;
+			ccap::Provider replacement;
+			std::string resolved_id;
+			if (!Configure(replacement, device_id, resolved_id)) {
+				continue;
+			}
+			next_frame_due_us_.store(0);
+			last_frame_us_.store(SteadyTimestampMicros());
+			recovery_pending_.store(true);
+			if (!replacement.start()) {
+				recovery_pending_.store(false);
+				SetError("failed to restart camera device");
+				continue;
+			}
+			provider_ = std::move(replacement);
+			device_id_ = std::move(resolved_id);
+			ready_ = true;
+		}
 	}
 
 	bool ShouldDeliverFrame() noexcept {
@@ -183,6 +283,12 @@ private:
 	std::string device_id_;
 	mutable std::string last_error_;
 	std::atomic<std::int64_t> next_frame_due_us_{0};
+	std::atomic<std::int64_t> last_frame_us_{0};
+	std::atomic_bool running_requested_{false};
+	std::atomic_bool recovery_pending_{false};
+	std::thread supervisor_;
+	std::mutex supervisor_mutex_;
+	std::condition_variable supervisor_condition_;
 	bool ready_ = false;
 };
 
