@@ -17,6 +17,7 @@ namespace media_capture {
 struct ScreenCaptureConfig {
 	std::string source_id;
 	std::uint32_t frames_per_second = 15;
+	bool include_cursor = true;
 };
 
 using ScreenFrameCallback = std::function<void(const ScreenFrameView& frame)>;

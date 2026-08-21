@@ -5,6 +5,8 @@
 #include <set>
 #include <string>
 
+int RunCursorCompositorTests();
+
 namespace {
 
 bool Check(bool condition, const char* message) {
@@ -17,6 +19,9 @@ bool Check(bool condition, const char* message) {
 } // namespace
 
 int main() {
+	if (RunCursorCompositorTests() != 0) {
+		return 1;
+	}
 	if (!Check(!media_capture::CreateScreenCapture({}, {}),
 	           "invalid screen capture configuration was accepted")) {
 		return 1;

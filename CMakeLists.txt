@@ -86,6 +86,7 @@ endif()
 
 if(MEDIA_CAPTURE_BUILD_SCREEN)
   set(MEDIA_CAPTURE_SCREEN_SOURCES
+    src/screen/cursor_compositor.cpp
     src/screen/screen_source.cpp
     src/screen/screen_capture.cpp
     ${MEDIA_CAPTURE_SCREEN_CAPTURE_LITE_SOURCE_DIR}/src_cpp/ScreenCapture.c
