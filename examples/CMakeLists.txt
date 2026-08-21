@@ -4,6 +4,12 @@ target_link_libraries(media_capture_audio_devices PRIVATE media_capture::audio)
 add_executable(media_capture_record_audio record_audio.cpp)
 target_link_libraries(media_capture_record_audio PRIVATE media_capture::audio)
 
+add_executable(media_capture_record_system_audio record_system_audio.cpp)
+target_link_libraries(media_capture_record_system_audio PRIVATE media_capture::audio)
+
+add_executable(media_capture_play_audio play_audio.cpp)
+target_link_libraries(media_capture_play_audio PRIVATE media_capture::audio)
+
 if(TARGET media_capture_camera)
   add_executable(media_capture_camera_devices camera_devices.cpp)
   target_link_libraries(media_capture_camera_devices PRIVATE media_capture::camera)

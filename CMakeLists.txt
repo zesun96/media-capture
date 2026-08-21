@@ -47,6 +47,7 @@ set_target_properties(media_capture_miniaudio PROPERTIES POSITION_INDEPENDENT_CO
 
 add_library(media_capture_audio STATIC
   src/audio/miniaudio_audio_capture.cpp
+  src/audio/miniaudio_audio_playback.cpp
   $<TARGET_OBJECTS:media_capture_miniaudio>
 )
 add_library(media_capture::audio ALIAS media_capture_audio)

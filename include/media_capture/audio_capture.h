@@ -38,4 +38,10 @@ public:
 std::unique_ptr<AudioCapture> CreateAudioCapture(AudioCaptureConfig config,
                                                  AudioFrameCallback callback);
 
+// Captures the PCM being rendered by an audio output device. On Windows this uses WASAPI
+// loopback. The device ID must refer to an output returned by EnumerateAudioDevices(); an empty
+// ID selects the system default output.
+std::unique_ptr<AudioCapture> CreateSystemAudioCapture(AudioCaptureConfig config,
+                                                       AudioFrameCallback callback);
+
 } // namespace media_capture

@@ -169,7 +169,7 @@ private:
 			}
 			try {
 				callback_({frame->data[0], frame->width, frame->height, frame->stride[0],
-				           static_cast<std::int64_t>(frame->timestamp / 1000U)});
+				           static_cast<std::int64_t>(frame->timestamp / 1000U), 0, false});
 			} catch (...) {
 				SetError("camera frame callback threw an exception");
 				return true;

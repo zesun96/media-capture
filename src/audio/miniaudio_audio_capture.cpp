@@ -56,9 +56,10 @@ std::string ResultMessage(std::string_view operation, ma_result result) {
 	return message;
 }
 
-std::string DescribeNativeFormats(ma_context* context, const ma_device_id& id) {
+std::string DescribeNativeFormats(ma_context* context, ma_device_type device_type,
+                                  const ma_device_id& id) {
 	ma_device_info info{};
-	if (ma_context_get_device_info(context, ma_device_type_capture, &id, &info) != MA_SUCCESS) {
+	if (ma_context_get_device_info(context, device_type, &id, &info) != MA_SUCCESS) {
 		return {};
 	}
 	std::ostringstream description;
@@ -102,8 +103,8 @@ void AppendDevices(std::vector<AudioDeviceInfo>& result, const ma_device_info* d
 
 class MiniaudioAudioCapture final : public AudioCapture {
 public:
-	MiniaudioAudioCapture(AudioCaptureConfig config, AudioFrameCallback callback)
-	    : config_(std::move(config)), callback_(std::move(callback)) {
+	MiniaudioAudioCapture(AudioCaptureConfig config, AudioFrameCallback callback, bool loopback)
+	    : config_(std::move(config)), callback_(std::move(callback)), loopback_(loopback) {
 		if (!context_.valid()) {
 			SetError(ResultMessage("failed to initialize miniaudio context", context_.result()));
 		}
@@ -188,11 +189,13 @@ private:
 			SetError(ResultMessage("failed to enumerate audio devices", result));
 			return false;
 		}
-		for (ma_uint32 index = 0; index < capture_count; ++index) {
-			const std::string id = EncodeDeviceId(capture_devices[index].id);
+		const ma_device_info* devices = loopback_ ? playback_devices : capture_devices;
+		const ma_uint32 device_count = loopback_ ? playback_count : capture_count;
+		for (ma_uint32 index = 0; index < device_count; ++index) {
+			const std::string id = EncodeDeviceId(devices[index].id);
 			if ((!requested_id.empty() && requested_id == id) ||
-			    (requested_id.empty() && capture_devices[index].isDefault == MA_TRUE)) {
-				selected_id = capture_devices[index].id;
+			    (requested_id.empty() && devices[index].isDefault == MA_TRUE)) {
+				selected_id = devices[index].id;
 				resolved_id = id;
 				return true;
 			}
@@ -201,7 +204,8 @@ private:
 			resolved_id.clear();
 			return true;
 		}
-		SetError("audio input device was not found");
+		SetError(loopback_ ? "audio output device was not found"
+		                   : "audio input device was not found");
 		return false;
 	}
 
@@ -219,7 +223,8 @@ private:
 		if (!FindDevice(requested_id, selected_id, resolved_id)) {
 			return false;
 		}
-		ma_device_config device_config = ma_device_config_init(ma_device_type_capture);
+		ma_device_config device_config =
+		    ma_device_config_init(loopback_ ? ma_device_type_loopback : ma_device_type_capture);
 		device_config.capture.format = ma_format_s16;
 		device_config.capture.channels = config_.channels;
 		device_config.capture.pDeviceID = requested_id.empty() ? nullptr : &selected_id;
@@ -229,8 +234,13 @@ private:
 
 		ma_result result = ma_device_init(context_.get(), &device_config, &device_);
 		if (result != MA_SUCCESS) {
-			SetError(ResultMessage("failed to initialize audio capture device", result) +
-			         DescribeNativeFormats(context_.get(), selected_id));
+			SetError(
+			    ResultMessage(loopback_ ? "failed to initialize system audio capture"
+			                            : "failed to initialize audio capture device",
+			                  result) +
+			    DescribeNativeFormats(context_.get(),
+			                          loopback_ ? ma_device_type_playback : ma_device_type_capture,
+			                          selected_id));
 			return false;
 		}
 		device_initialized_ = true;
@@ -268,6 +278,7 @@ private:
 
 	AudioCaptureConfig config_;
 	AudioFrameCallback callback_;
+	bool loopback_ = false;
 	Context context_;
 	ma_device device_{};
 	bool device_initialized_ = false;
@@ -306,7 +317,15 @@ std::unique_ptr<AudioCapture> CreateAudioCapture(AudioCaptureConfig config,
 	if (!callback || config.sample_rate == 0 || config.channels == 0) {
 		return nullptr;
 	}
-	return std::make_unique<MiniaudioAudioCapture>(std::move(config), std::move(callback));
+	return std::make_unique<MiniaudioAudioCapture>(std::move(config), std::move(callback), false);
+}
+
+std::unique_ptr<AudioCapture> CreateSystemAudioCapture(AudioCaptureConfig config,
+                                                       AudioFrameCallback callback) {
+	if (!callback || config.sample_rate == 0 || config.channels == 0) {
+		return nullptr;
+	}
+	return std::make_unique<MiniaudioAudioCapture>(std::move(config), std::move(callback), true);
 }
 
 } // namespace media_capture
