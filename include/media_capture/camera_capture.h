@@ -40,5 +40,9 @@ public:
 // and its frame view is valid only for the duration of the callback.
 std::unique_ptr<CameraCapture> CreateCameraCapture(CameraCaptureConfig config,
                                                    CameraFrameCallback callback);
+// Diagnostic overload. When creation fails, error receives the backend failure without changing
+// the existing nullptr-on-failure contract.
+std::unique_ptr<CameraCapture>
+CreateCameraCapture(CameraCaptureConfig config, CameraFrameCallback callback, std::string* error);
 
 } // namespace media_capture

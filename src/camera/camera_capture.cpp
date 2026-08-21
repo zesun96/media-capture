@@ -7,12 +7,20 @@
 
 #include "ccap.h"
 
+#include <atomic>
+#include <chrono>
 #include <limits>
 #include <mutex>
 #include <utility>
 
 namespace media_capture {
 namespace {
+
+std::int64_t SteadyTimestampMicros() {
+	return std::chrono::duration_cast<std::chrono::microseconds>(
+	           std::chrono::steady_clock::now().time_since_epoch())
+	    .count();
+}
 
 class CameraCaptureCcap final : public CameraCapture {
 public:
@@ -36,10 +44,12 @@ public:
 		if (provider_.isStarted()) {
 			return true;
 		}
+		next_frame_due_us_.store(0);
 		if (!provider_.start()) {
 			SetError("failed to start camera capture");
 			return false;
 		}
+		SetError({});
 		return true;
 	}
 
@@ -80,6 +90,7 @@ public:
 			return false;
 		}
 		const bool was_running = provider_.isStarted();
+		next_frame_due_us_.store(0);
 		if (was_running && !replacement.start()) {
 			SetError("failed to start replacement camera device");
 			return false;
@@ -90,6 +101,7 @@ public:
 		provider_ = std::move(replacement);
 		device_id_ = std::move(resolved_id);
 		ready_ = true;
+		SetError({});
 		return true;
 	}
 
@@ -121,8 +133,15 @@ private:
 				SetError("camera backend returned an unsupported frame");
 				return true;
 			}
-			callback_({frame->data[0], frame->width, frame->height, frame->stride[0],
-			           static_cast<std::int64_t>(frame->timestamp / 1000U)});
+			if (!ShouldDeliverFrame()) {
+				return true;
+			}
+			try {
+				callback_({frame->data[0], frame->width, frame->height, frame->stride[0],
+				           static_cast<std::int64_t>(frame->timestamp / 1000U)});
+			} catch (...) {
+				SetError("camera frame callback threw an exception");
+			}
 			return true;
 		});
 		if (!provider.open(requested_id, false)) {
@@ -132,6 +151,23 @@ private:
 		const auto info = provider.getDeviceInfo();
 		resolved_id = info.has_value() ? info->deviceName : std::string(requested_id);
 		return true;
+	}
+
+	bool ShouldDeliverFrame() noexcept {
+		const auto now = SteadyTimestampMicros();
+		const auto interval = static_cast<std::int64_t>(1000000U / config_.frames_per_second);
+		const auto tolerance = interval / 10;
+		auto due = next_frame_due_us_.load();
+		for (;;) {
+			if (due != 0 && now + tolerance < due) {
+				return false;
+			}
+			const auto next_due =
+			    due == 0 || now > due + interval ? now + interval : due + interval;
+			if (next_frame_due_us_.compare_exchange_weak(due, next_due)) {
+				return true;
+			}
+		}
 	}
 
 	void SetError(std::string error) const {
@@ -146,6 +182,7 @@ private:
 	ccap::Provider provider_;
 	std::string device_id_;
 	mutable std::string last_error_;
+	std::atomic<std::int64_t> next_frame_due_us_{0};
 	bool ready_ = false;
 };
 
@@ -153,12 +190,26 @@ private:
 
 std::unique_ptr<CameraCapture> CreateCameraCapture(CameraCaptureConfig config,
                                                    CameraFrameCallback callback) {
+	return CreateCameraCapture(std::move(config), std::move(callback), nullptr);
+}
+
+std::unique_ptr<CameraCapture>
+CreateCameraCapture(CameraCaptureConfig config, CameraFrameCallback callback, std::string* error) {
 	if (!callback) {
+		if (error != nullptr) {
+			*error = "camera frame callback is empty";
+		}
 		return nullptr;
 	}
 	auto capture = std::make_unique<CameraCaptureCcap>(std::move(config), std::move(callback));
 	if (!capture->Ready()) {
+		if (error != nullptr) {
+			*error = capture->LastError();
+		}
 		return nullptr;
+	}
+	if (error != nullptr) {
+		error->clear();
 	}
 	return capture;
 }

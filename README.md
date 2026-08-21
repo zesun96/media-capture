@@ -55,3 +55,29 @@ List sources or capture one monitor frame with:
 out/build/vs2022-x64-debug/examples/Debug/media_capture_screen_sources.exe
 out/build/vs2022-x64-debug/examples/Debug/media_capture_capture_screen.exe
 ```
+
+## Hardware acceptance
+
+The Release examples include `media_capture_device_probe`, which captures one source and prints
+machine-readable lifecycle and timing metrics. `payload_units` is the number of samples per channel
+for audio and the number of frames for video. Video results also include the observed dimensions;
+`callbacks_after_stop` must remain zero.
+
+```powershell
+out/build/vs2022-x64-release/examples/Release/media_capture_device_probe.exe audio 2
+out/build/vs2022-x64-release/examples/Release/media_capture_device_probe.exe camera default 2 1280 720 30
+out/build/vs2022-x64-release/examples/Release/media_capture_device_probe.exe screen 2
+```
+
+Run the complete opt-in Windows hardware matrix, including camera resolutions/FPS, repeated
+start/stop, and window minimize plus source-disappear recovery, with:
+
+```powershell
+.\tests\run_device_acceptance.ps1 -RestartCount 1
+```
+
+Use `-RestartCount 100` for the release restart matrix. The script opens a visible fixture window
+for the window scenarios and removes its temporary output files afterward. Run hardware acceptance
+from an interactive process with microphone, camera, and desktop access; service accounts and
+sandboxed automation processes can enumerate Windows devices yet still be denied when activating
+them.

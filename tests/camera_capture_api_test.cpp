@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <string>
 #include <utility>
 
 int main() {
@@ -13,6 +14,11 @@ int main() {
 	media_capture::CameraCaptureConfig config;
 	config.device_id = "media-capture-device-that-does-not-exist";
 	assert(media_capture::CreateCameraCapture(std::move(config), [](const auto&) {}) == nullptr);
+	std::string error;
+	config.device_id = "media-capture-device-that-does-not-exist";
+	assert(media_capture::CreateCameraCapture(
+	           std::move(config), [](const auto&) {}, &error) == nullptr);
+	assert(!error.empty());
 	assert(media_capture::CreateCameraCapture({}, {}) == nullptr);
 	return 0;
 }
